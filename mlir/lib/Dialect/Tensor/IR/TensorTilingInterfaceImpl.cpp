@@ -51,7 +51,7 @@ struct PadOpTiling : public TilingInterface::ExternalModel<PadOpTiling, PadOp> {
                          ArrayRef<OpFoldResult> offsets,
                          ArrayRef<OpFoldResult> sizes) const {
     FailureOr<TilingResult> result =
-        tensor::bubbleUpPadSlice(b, cast<PadOp>(op), offsets, sizes);
+        tensor::bubbleUpPadSlice(b, cast<PadOp>(op), offsets, sizes, false);
     if (failed(result))
       return failure();
     return result.value();
@@ -66,6 +66,17 @@ struct PadOpTiling : public TilingInterface::ExternalModel<PadOpTiling, PadOp> {
     resultOffsets.assign(offsets.begin(), offsets.end());
     resultSizes.assign(sizes.begin(), sizes.end());
     return success();
+  }
+
+  FailureOr<TilingResult>
+  generateResultTileValue(Operation *op, OpBuilder &b, unsigned resultNumber,
+                          ArrayRef<OpFoldResult> offsets,
+                          ArrayRef<OpFoldResult> sizes) const {
+    FailureOr<TilingResult> result =
+        tensor::bubbleUpPadSlice(b, cast<PadOp>(op), offsets, sizes, false);
+    if (failed(result))
+      return failure();
+    return result.value();
   }
 };
 
@@ -626,7 +637,9 @@ FailureOr<TilingResult> tensor::bubbleUpPadSlice(OpBuilder &b,
     // Create pad(extract_slice(x)).
     Value newSliceOp = b.create<tensor::ExtractSliceOp>(
         loc, padOp.getSource(), newOffsets, newLengths, newStrides);
-    auto newPadOp = b.create<PadOp>(loc, Type(), newSliceOp, newLows, newHighs);
+    auto newPadOp = b.create<PadOp>(
+        loc, Type(), newSliceOp, newLows, newHighs, padOp.getNofold(),
+        getPrunedAttributeList(padOp, PadOp::getAttributeNames()));
 
     // Copy region to new PadOp.
     IRMapping bvm;
