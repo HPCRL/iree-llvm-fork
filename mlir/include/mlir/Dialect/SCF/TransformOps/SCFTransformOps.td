@@ -215,4 +215,37 @@ def LoopCoalesceOp : Op<Transform_Dialect, "loop.coalesce", [
   }];
 }
 
+ def LoopCoalesceParallelOp : Op<Transform_Dialect, "loop.coalesce_parallel", [
+   FunctionalStyleTransformOpTrait, MemoryEffectsOpInterface,
+   TransformOpInterface, TransformEachOpTrait]> {
+   let summary = "Coalesces scf.forall loop";
+   let description = [{
+    Given a scf.forall, the dimensions are coalesced
+ 
+     #### Return modes
+ 
+     The return handle points to the coalesced loop if coalescing happens, or
+     the given input loop if coalescing does not happen.
+   }];
+   let arguments = (ins TransformHandleTypeInterface:$target,
+     DefaultValuedAttr<DenseI64ArrayAttr, "{}">:$collapsed_dim0,
+     DefaultValuedAttr<DenseI64ArrayAttr, "{}">:$collapsed_dim1,
+     DefaultValuedAttr<DenseI64ArrayAttr, "{}">:$collapsed_dim2,
+     OptionalAttr<DeviceMappingArrayAttr>:$mapping
+   );
+
+   let results = (outs TransformHandleTypeInterface:$transformed);
+
+   let assemblyFormat = [{
+     $target attr-dict `:` functional-type($target, $transformed)
+   }];
+   
+   let extraClassDeclaration = [{
+     ::mlir::DiagnosedSilenceableFailure applyToOne(
+         ::mlir::Operation *target,
+         ::mlir::transform::ApplyToEachResultList &results,
+         ::mlir::transform::TransformState &state);
+   }];
+ }
+
 #endif // SCF_TRANSFORM_OPS

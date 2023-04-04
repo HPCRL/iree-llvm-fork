@@ -129,6 +129,13 @@ LogicalResult coalesceLoops(MutableArrayRef<scf::ForOp> loops);
 void collapseParallelLoops(scf::ParallelOp loops,
                            ArrayRef<std::vector<unsigned>> combinedDimensions);
 
+ /// Take the Forall and for each set of dimension indices, combine them
+ /// into a single dimension. combinedDimensions must contain each index into
+ /// loops exactly once.
+LogicalResult
+collapseForallLoops(scf::ForallOp loops,
+                    ArrayRef<std::vector<unsigned>> combinedDimensions,
+                    std::optional<ArrayAttr> mapping);
 /// Promotes the loop body of a scf::ForOp to its containing block if the loop
 /// was known to have a single iteration.
 LogicalResult promoteIfSingleIteration(scf::ForOp forOp);
