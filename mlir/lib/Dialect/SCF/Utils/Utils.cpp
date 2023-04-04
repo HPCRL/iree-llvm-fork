@@ -800,81 +800,81 @@ LogicalResult
 mlir::collapseForallLoops(scf::ForallOp loops,
                           ArrayRef<std::vector<unsigned>> combinedDimensions,
                           std::optional<ArrayAttr> mapping) {
-   OpBuilder outsideBuilder(loops);
-   Location loc = loops.getLoc();
- 
-   // Presort combined dimensions.
-   auto sortedDimensions = llvm::to_vector<3>(combinedDimensions);
-   for (auto &dims : sortedDimensions)
-     llvm::sort(dims);
- 
-   // Normalize ForallOp's iteration pattern.
-   SmallVector<Value, 3> normalizedLowerBounds, normalizedSteps,
-       normalizedUpperBounds;
-   for (unsigned i = 0, e = loops.getRank(); i < e; ++i) {
-     OpBuilder insideLoopBuilder = OpBuilder::atBlockBegin(loops.getBody());
+  OpBuilder outsideBuilder(loops);
+  Location loc = loops.getLoc();
+
+  // Presort combined dimensions.
+  auto sortedDimensions = llvm::to_vector<3>(combinedDimensions);
+  for (auto &dims : sortedDimensions)
+    llvm::sort(dims);
+
+  // Normalize ForallOp's iteration pattern.
+  SmallVector<Value, 3> normalizedLowerBounds, normalizedSteps,
+      normalizedUpperBounds;
+  for (unsigned i = 0, e = loops.getRank(); i < e; ++i) {
+    OpBuilder insideLoopBuilder = OpBuilder::atBlockBegin(loops.getBody());
     auto resultBounds = normalizeLoop(outsideBuilder, insideLoopBuilder, loc,
                                       loops.getLowerBound(outsideBuilder)[i],
                                       loops.getUpperBound(outsideBuilder)[i],
                                       loops.getStep(outsideBuilder)[i],
                                       loops.getBody()->getArgument(i));
- 
-     normalizedLowerBounds.push_back(resultBounds.lowerBound);
-     normalizedUpperBounds.push_back(resultBounds.upperBound);
-     normalizedSteps.push_back(resultBounds.step);
-   }
- 
-   // Combine iteration spaces.
-   SmallVector<Value, 3> lowerBounds, upperBounds, steps;
-   auto cst0 = outsideBuilder.create<arith::ConstantIndexOp>(loc, 0);
-   auto cst1 = outsideBuilder.create<arith::ConstantIndexOp>(loc, 1);
-   for (unsigned i = 0, e = sortedDimensions.size(); i < e; ++i) {
+
+    normalizedLowerBounds.push_back(resultBounds.lowerBound);
+    normalizedUpperBounds.push_back(resultBounds.upperBound);
+    normalizedSteps.push_back(resultBounds.step);
+  }
+
+  // Combine iteration spaces.
+  SmallVector<Value, 3> lowerBounds, upperBounds, steps;
+  auto cst0 = outsideBuilder.create<arith::ConstantIndexOp>(loc, 0);
+  auto cst1 = outsideBuilder.create<arith::ConstantIndexOp>(loc, 1);
+  for (unsigned i = 0, e = sortedDimensions.size(); i < e; ++i) {
     Value newUpperBound =
         outsideBuilder.createOrFold<arith::ConstantIndexOp>(loc, 1);
-     for (auto idx : sortedDimensions[i]) {
+    for (auto idx : sortedDimensions[i]) {
       newUpperBound = outsideBuilder.createOrFold<arith::MulIOp>(
-           loc, newUpperBound, normalizedUpperBounds[idx]);
-     }
-     lowerBounds.push_back(cst0);
-     steps.push_back(cst1);
-     upperBounds.push_back(newUpperBound);
-   }
- 
-   // Create new Forall with conversions to the original induction values.
-   // The loop below uses divisions to get the relevant range of values in the
-   // new induction value that represent each range of the original induction
-   // value. The remainders then determine based on that range, which iteration
-   // of the original induction value this represents. This is a normalized value
-   // that is un-normalized already by the previous logic.
-   auto newPloop = outsideBuilder.create<scf::ForallOp>(
-       loc, getAsOpFoldResult(upperBounds), loops.getOutputs(), mapping,
-       [&](OpBuilder &insideBuilder, Location, ValueRange ploopIVs) {
-         for (unsigned i = 0, e = combinedDimensions.size(); i < e; ++i) {
-           Value previous = ploopIVs[i];
-           unsigned numberCombinedDimensions = combinedDimensions[i].size();
-           // Iterate over all except the last induction value.
-           for (unsigned j = numberCombinedDimensions - 1; j > 0; --j) {
-             unsigned idx = combinedDimensions[i][j];
- 
-             // Determine the current induction value's current loop iteration
+          loc, newUpperBound, normalizedUpperBounds[idx]);
+    }
+    lowerBounds.push_back(cst0);
+    steps.push_back(cst1);
+    upperBounds.push_back(newUpperBound);
+  }
+
+  // Create new Forall with conversions to the original induction values.
+  // The loop below uses divisions to get the relevant range of values in the
+  // new induction value that represent each range of the original induction
+  // value. The remainders then determine based on that range, which iteration
+  // of the original induction value this represents. This is a normalized value
+  // that is un-normalized already by the previous logic.
+  auto newPloop = outsideBuilder.create<scf::ForallOp>(
+      loc, getAsOpFoldResult(upperBounds), loops.getOutputs(), mapping,
+      [&](OpBuilder &insideBuilder, Location, ValueRange ploopIVs) {
+        for (unsigned i = 0, e = combinedDimensions.size(); i < e; ++i) {
+          Value previous = ploopIVs[i];
+          unsigned numberCombinedDimensions = combinedDimensions[i].size();
+          // Iterate over all except the last induction value.
+          for (unsigned j = numberCombinedDimensions - 1; j > 0; --j) {
+            unsigned idx = combinedDimensions[i][j];
+
+            // Determine the current induction value's current loop iteration
             Value iv = insideBuilder.createOrFold<arith::RemSIOp>(
-                 loc, previous, normalizedUpperBounds[idx]);
+                loc, previous, normalizedUpperBounds[idx]);
             replaceAllUsesInRegionWith(loops.getInductionVar(idx), iv,
-                                        loops.getRegion());
- 
-             // Remove the effect of the current induction value to prepare for
-             // the next value.
+                                       loops.getRegion());
+
+            // Remove the effect of the current induction value to prepare for
+            // the next value.
             previous = insideBuilder.createOrFold<arith::DivSIOp>(
-                 loc, previous, normalizedUpperBounds[idx]);
-           }
- 
-           // The final induction value is just the remaining value.
-           unsigned idx = combinedDimensions[i][0];
-           replaceAllUsesInRegionWith(loops.getBody()->getArgument(idx),
-                                      previous, loops.getRegion());
-         }
+                loc, previous, normalizedUpperBounds[idx]);
+          }
+
+          // The final induction value is just the remaining value.
+          unsigned idx = combinedDimensions[i][0];
+          replaceAllUsesInRegionWith(loops.getBody()->getArgument(idx),
+                                     previous, loops.getRegion());
+        }
         auto term = insideBuilder.create<scf::InParallelOp>(loc);
-       });
+      });
 
   // Map the old values to new values when cloning the code
   IRMapping irMapping;
@@ -894,12 +894,11 @@ mlir::collapseForallLoops(scf::ForallOp loops,
     outsideBuilder.clone(bodyOp, irMapping);
   }
 
-   // Replace the old loop with the new loop.
+  // Replace the old loop with the new loop.
   loops.replaceAllUsesWith(newPloop);
-   loops.erase();
-   return success();
- }
- 
+  loops.erase();
+  return success();
+}
 
 // Hoist the ops within `outer` that appear before `inner`.
 // Such ops include the ops that have been introduced by parametric tiling.

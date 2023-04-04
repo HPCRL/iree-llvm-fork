@@ -245,66 +245,65 @@ transform::LoopCoalesceOp::applyToOne(Operation *op,
   return DiagnosedSilenceableFailure::success();
 }
 
- //===----------------------------------------------------------------------===//
- // LoopCoalesceParallelOp
- //===----------------------------------------------------------------------===//
- 
-DiagnosedSilenceableFailure
-transform::LoopCoalesceParallelOp::applyToOne(Operation *op,
-                                      transform::ApplyToEachResultList &results,
-                                      transform::TransformState &state) {
+//===----------------------------------------------------------------------===//
+// LoopCoalesceParallelOp
+//===----------------------------------------------------------------------===//
+
 DiagnosedSilenceableFailure transform::LoopCoalesceParallelOp::applyToOne(
     Operation *op, transform::ApplyToEachResultList &results,
     transform::TransformState &state) {
-   LogicalResult result(failure());
-   if (scf::ForallOp scfForallOp = dyn_cast<scf::ForallOp>(op)) {
-    llvm::SmallVector<std::vector<unsigned>, 3> combinedLoops;
-    if (!getCollapsedDim0().empty()) {
-      auto vec = getCollapsedDim0().vec();
-      combinedLoops.push_back(
-          std::vector<unsigned int>(vec.begin(), vec.end()));
+  DiagnosedSilenceableFailure transform::LoopCoalesceParallelOp::applyToOne(
+      Operation * op, transform::ApplyToEachResultList & results,
+      transform::TransformState & state) {
+    LogicalResult result(failure());
+    if (scf::ForallOp scfForallOp = dyn_cast<scf::ForallOp>(op)) {
+      llvm::SmallVector<std::vector<unsigned>, 3> combinedLoops;
+      if (!getCollapsedDim0().empty()) {
+        auto vec = getCollapsedDim0().vec();
+        combinedLoops.push_back(
+            std::vector<unsigned int>(vec.begin(), vec.end()));
+      }
+      if (!getCollapsedDim1().empty()) {
+        auto vec = getCollapsedDim1().vec();
+        combinedLoops.push_back(
+            std::vector<unsigned int>(vec.begin(), vec.end()));
+      }
+      if (!getCollapsedDim2().empty()) {
+        auto vec = getCollapsedDim2().vec();
+        combinedLoops.push_back(
+            std::vector<unsigned int>(vec.begin(), vec.end()));
+      }
+      result = collapseForallLoops(scfForallOp, combinedLoops, getMapping());
     }
-    if (!getCollapsedDim1().empty()) {
-      auto vec = getCollapsedDim1().vec();
-      combinedLoops.push_back(
-          std::vector<unsigned int>(vec.begin(), vec.end()));
+
+    results.push_back(op);
+    if (failed(result)) {
+      DiagnosedSilenceableFailure diag = emitSilenceableError()
+                                         << "failed to coalesce";
+      return diag;
     }
-    if (!getCollapsedDim2().empty()) {
-      auto vec = getCollapsedDim2().vec();
-      combinedLoops.push_back(
-          std::vector<unsigned int>(vec.begin(), vec.end()));
-    }
-     result = collapseForallLoops(scfForallOp, combinedLoops, getMapping());
-   }
- 
-   results.push_back(op);
-   if (failed(result)) {
-     DiagnosedSilenceableFailure diag = emitSilenceableError()
-                                        << "failed to coalesce";
-     return diag;
-   }
-   return DiagnosedSilenceableFailure::success();
- }
+    return DiagnosedSilenceableFailure::success();
+  }
 
-//===----------------------------------------------------------------------===//
-// Transform op registration
-//===----------------------------------------------------------------------===//
+  //===----------------------------------------------------------------------===//
+  // Transform op registration
+  //===----------------------------------------------------------------------===//
 
-namespace {
-class SCFTransformDialectExtension
-    : public transform::TransformDialectExtension<
-          SCFTransformDialectExtension> {
-public:
-  using Base::Base;
+  namespace {
+  class SCFTransformDialectExtension
+      : public transform::TransformDialectExtension<
+            SCFTransformDialectExtension> {
+  public:
+    using Base::Base;
 
-  void init() {
-    declareGeneratedDialect<AffineDialect>();
-    declareGeneratedDialect<func::FuncDialect>();
+    void init() {
+      declareGeneratedDialect<AffineDialect>();
+      declareGeneratedDialect<func::FuncDialect>();
 
-    registerTransformOps<
+      registerTransformOps<
 #define GET_OP_LIST
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.cpp.inc"
-        >();
+          >();
   }
 };
 } // namespace
