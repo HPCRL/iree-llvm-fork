@@ -252,9 +252,6 @@ transform::LoopCoalesceOp::applyToOne(Operation *op,
 DiagnosedSilenceableFailure transform::LoopCoalesceParallelOp::applyToOne(
     Operation *op, transform::ApplyToEachResultList &results,
     transform::TransformState &state) {
-  DiagnosedSilenceableFailure transform::LoopCoalesceParallelOp::applyToOne(
-      Operation * op, transform::ApplyToEachResultList & results,
-      transform::TransformState & state) {
     LogicalResult result(failure());
     if (scf::ForallOp scfForallOp = dyn_cast<scf::ForallOp>(op)) {
       llvm::SmallVector<std::vector<unsigned>, 3> combinedLoops;
@@ -283,7 +280,7 @@ DiagnosedSilenceableFailure transform::LoopCoalesceParallelOp::applyToOne(
       return diag;
     }
     return DiagnosedSilenceableFailure::success();
-  }
+}
 
   //===----------------------------------------------------------------------===//
   // Transform op registration
