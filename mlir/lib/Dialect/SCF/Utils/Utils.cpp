@@ -873,7 +873,8 @@ mlir::collapseForallLoops(scf::ForallOp loops,
           replaceAllUsesInRegionWith(loops.getBody()->getArgument(idx),
                                      previous, loops.getRegion());
         }
-        auto term = insideBuilder.create<scf::InParallelOp>(loc);
+        // Create empty in_parallel section
+        insideBuilder.create<scf::InParallelOp>(loc);
       });
 
   // Map the old values to new values when cloning the code
